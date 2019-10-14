@@ -74,7 +74,6 @@ func Login(username, password string) map[string]interface{} {
 func GetUsers() []User {
 	users := []User{}
 	DB.Table("users").Find(&users)
-	// users, err := DB.Table("users").Find(&users).Error
 	if err != nil {
 		return nil
 	}
