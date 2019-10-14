@@ -2,7 +2,6 @@ package middlewares
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"os"
 	"strings"
@@ -14,13 +13,10 @@ import (
 // Authorization - JWT Authorization middleware
 var Authorization = func(next http.Handler) http.Handler {
 
-	auth := func(w http.ResponseWriter, r *http.Request) {
-		fmt.Println("authorize")
-
-		bearerToken := r.Header.Get("Authorization")
-
-		if bearerToken == "" {
-			res := map[string]interface{}{"message": "missing token"}
+	checkToken := func(w http.ResponseWriter, r *http.Request) {
+		authHeader := r.Header.Get("Authorization")
+		if authHeader == "" {
+			res := map[string]interface{}{"response": "missing token"}
 			w.WriteHeader(http.StatusForbidden)
 			w.Header().Add("Content-Type", "application/json")
 
@@ -28,15 +24,12 @@ var Authorization = func(next http.Handler) http.Handler {
 			return
 		}
 
-		t := strings.Split(bearerToken, " ")[1]
-		tk := &models.Token{}
-
-		token, err := jwt.ParseWithClaims(t, tk, func(token *jwt.Token) (interface{}, error) {
-			return []byte(os.Getenv("token_secret")), nil
+		authToken := strings.Split(authHeader, " ")[1]
+		token, err := jwt.ParseWithClaims(authToken, &models.Claims{}, func(token *jwt.Token) (interface{}, error) {
+			return []byte(os.Getenv("TOKEN_SECRET")), nil
 		})
-
 		if err != nil {
-			res := map[string]interface{}{"message": "Bad token"}
+			res := map[string]interface{}{"response": "Bad token"}
 			w.WriteHeader(http.StatusForbidden)
 			w.Header().Add("Content-Type", "application/json")
 
@@ -45,7 +38,7 @@ var Authorization = func(next http.Handler) http.Handler {
 		}
 
 		if !token.Valid {
-			res := map[string]interface{}{"message": "Invalid token"}
+			res := map[string]interface{}{"response": "Invalid token"}
 			w.WriteHeader(http.StatusForbidden)
 			w.Header().Add("Content-Type", "application/json")
 
@@ -56,5 +49,5 @@ var Authorization = func(next http.Handler) http.Handler {
 		next.ServeHTTP(w, r)
 	}
 
-	return http.HandlerFunc(auth)
+	return http.HandlerFunc(checkToken)
 }

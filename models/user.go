@@ -1,15 +1,17 @@
 package models
 
 import (
+	"fmt"
 	"os"
+	"time"
 
 	"github.com/dgrijalva/jwt-go"
 	"github.com/jinzhu/gorm"
 	"golang.org/x/crypto/bcrypt"
 )
 
-// Token - jwt token struct
-type Token struct {
+// Claims - jwt token struct
+type Claims struct {
 	UserID uint
 	jwt.StandardClaims
 }
@@ -19,10 +21,9 @@ type User struct {
 	gorm.Model
 	Username string `json:"username"`
 	Password string `json:"password"`
-	Token    string `json:"token" sql:"-"`
 }
 
-// Create - create a user
+// Create - create a user with hashed password
 func (user *User) Create() map[string]interface{} {
 	hashedPassword, _ := bcrypt.GenerateFromPassword([]byte(user.Password), bcrypt.DefaultCost)
 	user.Password = string(hashedPassword)
@@ -30,14 +31,10 @@ func (user *User) Create() map[string]interface{} {
 	DB.Create(user)
 
 	if user.ID <= 0 {
-		return map[string]interface{}{"message": "Failed to create user"}
+		return map[string]interface{}{"response": "Failed to create user"}
 	}
 
-	user.Password = "" //delete password
-
-	res := map[string]interface{}{}
-	res["user"] = user
-	return res
+	return map[string]interface{}{"response": "Successfully created a user"}
 }
 
 // Login - authenticate a user
@@ -47,29 +44,33 @@ func Login(username, password string) map[string]interface{} {
 	err := DB.Table("users").Where("username = ?", username).First(user).Error
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
-			return map[string]interface{}{"message": "User does not exist"}
+			return map[string]interface{}{"response": "User does not exist"}
 		}
-		return map[string]interface{}{"message": "Failed to connect to db"}
+		return map[string]interface{}{"response": "Failed to connect to db"}
 	}
 
 	err = bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(password))
 	if err != nil && err == bcrypt.ErrMismatchedHashAndPassword {
-		return map[string]interface{}{"message": "Invalid username/password"}
+		return map[string]interface{}{"response": "Invalid username/password"}
 	}
 
-	user.Password = ""
+	secret := os.Getenv("TOKEN_SECRET")
 
-	tk := &Token{UserID: user.ID}
-	token := jwt.NewWithClaims(jwt.GetSigningMethod("HS256"), tk)
-	tokenString, _ := token.SignedString([]byte(os.Getenv("token_secret")))
-	user.Token = tokenString
+	claims := &Claims{UserID: user.ID}
+	expirationTime := time.Now().Add(7 * 24 * time.Hour)
+	claims.ExpiresAt = expirationTime.Unix()
 
-	res := map[string]interface{}{}
-	res["user"] = user
-	return res
+	token := jwt.NewWithClaims(jwt.GetSigningMethod("HS256"), claims)
+	signedToken, err := token.SignedString([]byte(secret))
+	if err != nil {
+		fmt.Println(err)
+		return nil
+	}
+
+	return map[string]interface{}{"token": signedToken}
 }
 
-// GetUsers -
+// GetUsers - supply a collection of users
 func GetUsers() []User {
 	users := []User{}
 	DB.Table("users").Find(&users)
